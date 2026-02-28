@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>Browser Cache Lab</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <h1>Browser Cache 測試頁面</h1>
+    <p>開啟 DevTools (F12) &gt; Network tab 觀察快取行為</p>
+
+    <div class="card">
+        <h2>測試步驟</h2>
+        <ol>
+            <li>首次載入：所有資源 Status 200</li>
+            <li>Soft Refresh (F5)：靜態資源應顯示 "from cache" 或 304</li>
+            <li>Hard Refresh (Ctrl+Shift+R)：所有資源重新下載 200</li>
+        </ol>
+    </div>
+
+    <div class="card">
+        <h2>快取狀態</h2>
+        <p>頁面載入時間：<span id="load-time"></span></p>
+        <p>當前時間：<span id="current-time"></span></p>
+    </div>
+
+    <img src="logo.svg" alt="Cache Logo" width="120" height="120">
+    <script src="app.js"></script>
+</body>
+</html>

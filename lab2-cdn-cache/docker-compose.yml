@@ -1,0 +1,17 @@
+services:
+  origin:
+    image: python:3.11-slim
+    working_dir: /app
+    volumes:
+      - ./origin_server.py:/app/origin_server.py
+      - ./origin:/app/origin
+    command: python origin_server.py
+
+  cdn-edge:
+    image: nginx:alpine
+    ports:
+      - "8081:80"
+    volumes:
+      - ./nginx-cdn.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - origin

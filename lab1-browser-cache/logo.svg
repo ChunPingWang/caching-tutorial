@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120">
+  <rect width="120" height="120" rx="16" fill="#2563eb"/>
+  <text x="60" y="55" text-anchor="middle" fill="white" font-size="18" font-weight="bold">Browser</text>
+  <text x="60" y="80" text-anchor="middle" fill="white" font-size="18" font-weight="bold">Cache</text>
+</svg>
