@@ -4,6 +4,34 @@
 
 本教學包含 **8 個可在本機執行的 Lab**，每個 Lab 都有自動化測試腳本，讓你親手驗證每種快取的行為。
 
+### 測試結果 (2026-02-28 驗證通過)
+
+```
+=============================================
+  測試結果摘要                通過: 8 / 8
+=============================================
+  Lab 1: Browser Cache             PASSED
+  Lab 2: CDN Cache                 PASSED
+  Lab 3: Reverse Proxy Cache       PASSED
+  Lab 4: Application Cache         PASSED
+  Lab 5: Database Cache            PASSED
+  Lab 6: Distributed Cache (Redis) PASSED
+  Lab 7: Write-Through Cache       PASSED
+  Lab 8: Write-Back Cache          PASSED
+=============================================
+```
+
+| Lab | 快取類型 | 關鍵驗證指標 | 結果 |
+|-----|---------|------------|------|
+| 1 | Browser Cache | ETag 304 回應、Cache-Control Header | PASS |
+| 2 | CDN Cache | MISS→HIT (508ms→8ms, 63x 加速) | PASS |
+| 3 | Reverse Proxy | 50 請求僅 1 穿透後端 (98% 擋下) | PASS |
+| 4 | Application Cache | LRU 淘汰、500ms→0.01ms (50000x)、命中率 75% | PASS |
+| 5 | Database Cache | Buffer Pool 命中率 99.81%、重複查詢 0 磁碟 I/O | PASS |
+| 6 | Distributed Cache | Redis 5 大結構、TTL 過期、Pipeline 1000 key/94ms | PASS |
+| 7 | Write-Through | Cache-DB 始終一致、命中率 100% | PASS |
+| 8 | Write-Back | 寫入 0.006ms (比 Write-Through 快 1000x)、dirty window 驗證 | PASS |
+
 ---
 
 ## 目錄
@@ -185,22 +213,16 @@ cd lab1-browser-cache
 bash test.sh
 ```
 
-### 已驗證的測試結果
+### 已驗證的測試結果 (7 項測試全部 PASS)
 
 ```
---- 測試 1: HTML 回傳 no-cache ---
-Cache-Control: no-cache            # HTML 每次都重新驗證
-ETag: "0c1cb6ef..."
-
---- 測試 2: CSS 回傳 max-age=3600 ---
-Cache-Control: public, max-age=3600  # 靜態資源快取 1 小時
-ETag: "b9903edf..."
-
---- 測試 5: 條件式請求 (應回傳 304) ---
-HTTP Status: 304                   # PASS: ETag 比對成功, 不重傳內容
-
---- 測試 6: 錯誤的 ETag (應回傳 200) ---
-HTTP Status: 200                   # PASS: ETag 不符, 回傳完整內容
+--- 測試 1: HTML → Cache-Control: no-cache + ETag ---          PASS
+--- 測試 2: CSS  → Cache-Control: public, max-age=3600 ---     PASS
+--- 測試 3: JS   → Cache-Control: public, max-age=3600 ---     PASS
+--- 測試 4: SVG  → Cache-Control: public, max-age=3600 ---     PASS
+--- 測試 5: 條件式請求 If-None-Match → 304 Not Modified ---    PASS
+--- 測試 6: 錯誤的 ETag → 200 OK (全量傳輸) ---               PASS
+--- 測試 7: 不同資源類型的 Cache-Control 差異驗證 ---           PASS
 ```
 
 ### Cache-Control 常用指令速查
@@ -258,26 +280,27 @@ cd lab2-cdn-cache
 bash test.sh
 ```
 
-### 已驗證的測試結果
+### 已驗證的測試結果 (6 項測試全部 PASS)
 
 ```
---- 測試 1: 首次請求 (MISS, 回源) ---
-X-Cache-Status: MISS
-X-Edge-Location: TW-TPE-01
-回應時間: 508ms                    # 包含 500ms 源站延遲
+--- 測試 1: 首次請求 ---
+  X-Cache-Status: MISS    回應時間: 508ms       PASS (回源取得)
 
---- 測試 2: 第二次請求 (HIT, 邊緣回應) ---
-X-Cache-Status: HIT
-回應時間: 6ms                      # 快了 85 倍！
+--- 測試 2: 第二次請求 ---
+  X-Cache-Status: HIT     回應時間: 8ms         PASS (63x 加速！)
+
+--- 測試 3: 連續 10 次請求 ---
+  源站只收到 1 次回源                             PASS
 
 --- 測試 4: 不同路徑獨立快取 ---
-/api/exchange-rate: HIT
-/api/product-image: MISS          # 新路徑, 需回源
-/api/product-image: HIT           # 第二次命中
+  /api/exchange-rate: HIT
+  /api/product-image: MISS → HIT                 PASS
 
 --- 測試 5: TTL 過期 (15秒) ---
-X-Cache-Status: EXPIRED           # TTL 到期, 重新回源
-回應時間: 509ms                    # 重新包含源站延遲
+  X-Cache-Status: EXPIRED  回應時間: 507ms       PASS (重新回源)
+
+--- 測試 6: 快取內容一致性 ---
+  兩次請求 timestamp 相同                         PASS
 ```
 
 ### CDN 快取的關鍵指標
@@ -314,21 +337,25 @@ cd lab3-reverse-proxy
 bash test.sh
 ```
 
-### 已驗證的測試結果
+### 已驗證的測試結果 (6 項測試全部 PASS)
 
 ```
+--- 測試 1: MISS → HIT 轉換 ---                              PASS
+--- 測試 2: 後端請求數確認 ---                                 PASS
+
 --- 測試 3: 壓力測試 — 50 個請求 ---
-壓測前後端已處理: 4 個請求
-壓測後後端已處理: 5 個請求
-50 個請求中，穿透到後端的: 1 個
-PASS: 快取有效擋下了 49/50 個請求   # 98% 的請求不需要後端處理！
+  穿透到後端: 1 個 / 50 個
+  快取擋下: 49/50 (98%)                                       PASS
 
 --- 測試 4: 不同 URL 獨立快取 ---
-/api/v1/product/1: MISS → HIT
-/api/v1/product/2: MISS → HIT      # 每個 URL 有自己的快取
+  /api/v1/product/1: MISS → HIT
+  /api/v1/product/2: MISS → HIT                               PASS
 
---- 測試 5: 健康檢查不快取 ---
-X-Cache-Status: BYPASS              # 指定路徑跳過快取
+--- 測試 5: 健康檢查 BYPASS ---
+  X-Cache-Status: BYPASS (始終不快取)                          PASS
+
+--- 測試 6: TTL 過期 ---
+  X-Cache-Status: EXPIRED                                     PASS
 ```
 
 ### NGINX 快取配置範例
@@ -390,29 +417,28 @@ cd lab4-app-cache
 bash test.sh
 ```
 
-### 已驗證的測試結果
+### 已驗證的測試結果 (6 項測試全部 PASS)
 
 ```
 --- 測試 1: Cache MISS (首次查詢) ---
-cache_hit: false
-response_time_ms: 500.23           # 包含 500ms DB 查詢
+  cache_hit: false, response_time_ms: 500.23                  PASS
 
 --- 測試 2: Cache HIT (重複查詢) ---
-cache_hit: true
-response_time_ms: 0.01             # 快了 50000 倍！
+  cache_hit: true, response_time_ms: 0.01 (快 50000 倍！)     PASS
 
---- 測試 3: LRU 淘汰 (容量=5) ---
-存入 product 1~5: cached_keys: [1, 2, 3, 4, 5]
-存入 product 6:   cached_keys: [2, 3, 4, 5, 6]
-                   evictions: 1    # product:1 被 LRU 淘汰
+--- 測試 3: LRU 淘汰 (容量=5, 存入 6 個) ---
+  存入 1~5: [1,2,3,4,5], evictions: 0
+  存入 6:   [2,3,4,5,6], evictions: 1 (product:1 被淘汰)      PASS
 
---- 測試 5: TTL 過期 (15秒) ---
-立即查詢: cache_hit=True
-16秒後: cache_hit=False            # TTL 過期
+--- 測試 4: 被淘汰的 key 變回 MISS ---
+  查詢 product/1: cache_hit=False                              PASS
 
---- 測試 6: 命中率 ---
-hits: 9, misses: 3
-hit_ratio: 75.0%                   # 3次 MISS + 9次 HIT
+--- 測試 5: TTL 過期 (TTL=15s) ---
+  立即: cache_hit=True → 16秒後: cache_hit=False
+  expirations: 1                                               PASS
+
+--- 測試 6: 命中率統計 ---
+  hits: 9, misses: 3, hit_ratio: 75.0%                        PASS
 ```
 
 ### Spring Boot 實作參考
@@ -474,25 +500,30 @@ cd lab5-db-cache
 bash test.sh
 ```
 
-### 已驗證的測試結果
+### 已驗證的測試結果 (7 項測試全部 PASS)
 
 ```
+--- 測試 1: Buffer Pool 基本狀態 ---                          PASS
+--- 測試 2: 查詢前讀取統計記錄 ---                             PASS
+
 --- 測試 3: 聚合查詢 ---
-category     | count | avg_price | max_price
-Electronics  |   125 |  4856.91  | 9988.09
-Clothing     |   120 |  4891.43  | 9805.81
-Food         |   126 |  4461.20  | 9768.59
+  Electronics: 107筆, avg=4913.86
+  Clothing:    125筆, avg=5356.77
+  Food:        125筆, avg=5052.37                             PASS
 
 --- 測試 4: 重複 10 次查詢 ---
-Buffer Pool 邏輯讀取: 444259 -> 451241 (增加 6982)
-磁碟物理讀取: 865 -> 865 (增加 0)     # 零磁碟 I/O！全部從記憶體讀取
+  邏輯讀取: 443800 → 450757 (+6957)
+  磁碟讀取: 850 → 850 (+0)   ← 零磁碟 I/O！                 PASS
 
 --- 測試 5: Buffer Pool 命中率 ---
-Buffer Pool Hit Ratio: 99.81%       # 超過 99% 目標
+  Hit Ratio: 99.81% (目標 > 99%)                              PASS
 
---- 測試 6: EXPLAIN 比較 ---
-無索引 (全表掃描): type=ALL, rows=1091
-有索引 (idx_category): type=ref, rows=229   # 掃描行數減少 79%
+--- 測試 6: EXPLAIN 索引比較 ---
+  無索引: type=ALL, rows=1098 (全表掃描)
+  有索引: type=ref, rows=223 (掃描減少 80%)                    PASS
+
+--- 測試 7: Buffer Pool 大小資訊 ---
+  128MB, Data: 1565 pages, Free: 6611 pages                   PASS
 ```
 
 ### Buffer Pool 調優建議
@@ -543,40 +574,19 @@ cd lab6-distributed-cache
 bash test.sh
 ```
 
-### 已驗證的測試結果
+### 已驗證的測試結果 (10 項測試全部 PASS)
 
 ```
---- 測試 2: String (商品快取) ---
-GET product:1001 -> {"name":"MacBook","price":59900}
-TTL: 60s
-
---- 測試 3: Hash (Session) ---
-user_id: 42, username: alice, role: admin
-
---- 測試 4: List (最近瀏覽, 只保留 3 筆) ---
-Product-E, Product-D, Product-C
-
---- 測試 5: Sorted Set (排行榜 Top 3) ---
-Dave: 3100, Bob: 2300, Carol: 1800
-
---- 測試 6: TTL 過期 ---
-立即讀取: expires-soon
-4秒後: (nil)                       # 自動過期刪除
-
---- 測試 7: Pipeline 批量寫入 ---
-1000 個 key, errors: 0, 耗時: 88ms  # 平均 0.088ms/key
-
---- 測試 8: 命中率 ---
-keyspace_hits: 100, misses: 20
-命中率: ~83%
-
---- 測試 9: 記憶體配置 ---
-已使用: 1.12M, 上限: 50.00M
-淘汰策略: allkeys-lru
-
---- 測試 10: Pub/Sub 快取失效 ---
-channel: cache:invalidate
-message: {"key":"product:1001","reason":"price_updated"}
+--- 測試 1:  Redis PING → PONG                                PASS
+--- 測試 2:  String SET/GET product:1001, TTL=60s              PASS
+--- 測試 3:  Hash HSET/HGETALL session (4 fields)              PASS
+--- 測試 4:  List LPUSH + LTRIM (保留最近 3 筆)                 PASS
+--- 測試 5:  Sorted Set ZADD + ZREVRANGE (排行榜 Top 3)         PASS
+--- 測試 6:  TTL 過期: 3秒後 key 自動刪除                       PASS
+--- 測試 7:  Pipeline 批量寫入 1000 key, 0 errors, 94ms        PASS
+--- 測試 8:  命中率: hits=100, misses=20, ratio=83%            PASS
+--- 測試 9:  記憶體: 1.12M/50M, 策略: allkeys-lru              PASS
+--- 測試 10: Pub/Sub 發布失效通知, 接收者: 1                    PASS
 ```
 
 ### Redis 架構選型指南
@@ -631,33 +641,27 @@ cd lab7-write-through
 bash test.sh
 ```
 
-### 已驗證的測試結果
+### 已驗證的測試結果 (6 項測試全部 PASS)
 
 ```
 --- 測試 1: Write-Through 寫入 ---
-strategy: write-through
-write_time_ms: 7.25                # 需等 DB 寫入完成
+  write_time_ms: 6.08 (需等 DB 完成)                          PASS
 
---- 測試 2: 讀取來源 ---
-source: cache                      # 寫入後直接從 Cache 讀取
-read_time_ms: 0.0153               # 極快
+--- 測試 2: 讀取 (來自 Cache) ---
+  source: cache, read_time_ms: 0.0045                         PASS
 
---- 測試 3: 一致性驗證 ---
-cache_db_consistent: true          # Cache 與 DB 完全一致！
-db_records: 3, cache_records: 3
+--- 測試 3: Cache 與 DB 一致性 ---
+  cache_db_consistent: true, mismatches: []                   PASS
 
 --- 測試 4: 更新後一致性 ---
-更新 ACC001: 50000 -> 42000
-讀取 balance: 42000                # 立即生效
-cache_db_consistent: true          # 更新後依然一致
+  ACC001 餘額 50000→42000, 立即生效
+  cache_db_consistent: true                                   PASS
 
 --- 測試 5: 命中率 ---
-hits: 12, misses: 0
-hit_ratio: 100.0%                  # Write-Through 寫入後全部命中
+  hits: 12, misses: 0, hit_ratio: 100.0%                     PASS
 
 --- 測試 6: 13 筆操作後一致性 ---
-cache_db_consistent: true          # 始終一致！
-mismatches: []
+  cache_db_consistent: true (始終一致！)                       PASS
 ```
 
 ### 適用場景
@@ -710,34 +714,32 @@ cd lab8-write-back
 bash test.sh
 ```
 
-### 已驗證的測試結果
+### 已驗證的測試結果 (8 項測試全部 PASS)
 
 ```
 --- 測試 1: 高速寫入 ---
-500 次寫入耗時: 2006ms (平均: 4ms/次)  # 每次只寫記憶體
+  500 次寫入耗時: 2023ms (平均: 4ms/次)                       PASS
 
 --- 測試 2: 寫入後立即檢查 ---
-dirty_keys: 1                       # 有未同步的資料！
-DB 中的記錄數: 6                     # 部分已由之前的 flush 同步
+  dirty_keys: 1 (DB 尚未同步)                                 PASS
 
 --- 測試 3: Cache 與 DB 差異 ---
-inconsistent_keys: 1
-  faq: cache=100, db=75             # Cache 超前, DB 落後
+  inconsistent_keys: 1 (faq: cache=100, db=62)                PASS
 
 --- 測試 4: 等待背景同步 (7秒) ---
-dirty_keys: 0                       # 全部同步完成！
-flush 次數: 2
+  dirty_keys: 0, flush 次數: 2                                PASS
 
 --- 測試 5: 同步後一致性 ---
-inconsistent_keys: 0                # 同步後完全一致
+  inconsistent_keys: 0                                        PASS
 
 --- 測試 6: Dirty Window 展示 ---
-寫入後 risk_keys: ['new-page']      # 此刻崩潰會遺失這個 key
-同步後 risk_keys: []                 # 同步後無風險
+  寫入後 risk_keys: ['new-page'] → 同步後: []                  PASS
 
 --- 測試 7: 延遲對比 ---
-Write-Back:    0.0057ms             # 僅寫記憶體
-Write-Through: ~5-7ms              # 需等 DB (慢 1000 倍)
+  Write-Back: 0.006ms vs Write-Through: ~5-7ms (1000x 快)     PASS
+
+--- 測試 8: 最終統計 ---
+  writes: 1004, flushes: 3, items_flushed: 8                  PASS
 ```
 
 ### 適用場景

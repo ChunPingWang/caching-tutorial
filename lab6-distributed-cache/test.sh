@@ -135,11 +135,16 @@ $REDIS SUBSCRIBE "cache:invalidate" &
 SUB_PID=$!
 sleep 1
 # 發布失效通知
-$REDIS PUBLISH "cache:invalidate" '{"key":"product:1001","reason":"price_updated"}'
+RECEIVERS=$($REDIS PUBLISH "cache:invalidate" '{"key":"product:1001","reason":"price_updated"}')
 sleep 1
-kill $SUB_PID 2>/dev/null
-wait $SUB_PID 2>/dev/null
-echo "PASS: Pub/Sub 快取失效通知正常"
+kill $SUB_PID 2>/dev/null || true
+wait $SUB_PID 2>/dev/null || true
+echo "  接收者數量: $RECEIVERS"
+if [ "$RECEIVERS" -ge 1 ]; then
+    echo "PASS: Pub/Sub 快取失效通知正常"
+else
+    echo "INFO: Pub/Sub 發布完成 (接收者: $RECEIVERS)"
+fi
 echo ""
 
 echo "=========================================="
